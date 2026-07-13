@@ -29,6 +29,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     net-tools \
     && rm -rf /var/lib/apt/lists/*
 
+# Node.js 20 (LTS) — needed for @modelcontextprotocol/server-postgres MCP
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create workspace and set permissions
 RUN mkdir -p /workspace /workspace/jarvis /workspace/jarvis/workspaces /workspace/jarvis/skills
 
@@ -44,6 +49,18 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh
 # Install Python dependencies from requirements.txt
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+
+# Install PostgreSQL MCP server (Node.js, official reference implementation)
+# Works with plain PostgreSQL and Apache AGE (via SQL interface)
+RUN npm install -g @modelcontextprotocol/server-postgres
+
+# Download GitHub MCP server binary (Go binary, official from github.com/github/github-mcp-server)
+ENV GITHUB_MCP_VERSION=1.5.0
+RUN curl -fsSL \
+    "https://github.com/github/github-mcp-server/releases/download/v${GITHUB_MCP_VERSION}/github-mcp-server_Linux_x86_64.tar.gz" \
+    | tar -xzf - -C /tmp/ \
+    && mv /tmp/github-mcp-server /usr/local/bin/github-mcp-server \
+    && chmod +x /usr/local/bin/github-mcp-server
 
 WORKDIR /workspace/jarvis
 
@@ -62,18 +79,17 @@ echo "=========================================="
 # Load environment variables from .env if it exists
 if [ -f /workspace/.env ]; then
     echo "[*] Loading environment from /workspace/.env"
-    export $(cat /workspace/.env | grep -v '^#' | grep -v '^$' | xargs)
+    set -a; source /workspace/.env; set +a
 fi
 
 if [ -f /workspace/jarvis/.env ]; then
     echo "[*] Loading environment from /workspace/jarvis/.env"
-    export $(cat /workspace/jarvis/.env | grep -v '^#' | grep -v '^$' | xargs)
+    set -a; source /workspace/jarvis/.env; set +a
 fi
 
 # Add docker group to current user for docker socket access
 if [ -S /var/run/docker.sock ]; then
     echo "[*] Docker socket found at /var/run/docker.sock"
-    # This is handled by the host; verify access
     docker ps > /dev/null 2>&1 && echo "[✓] Docker socket accessible" || echo "[!] Docker socket may not be accessible (permissions issue)"
 fi
 
@@ -96,24 +112,25 @@ else
     echo "[*] TAILSCALE_AUTHKEY not set; skipping Tailscale"
 fi
 
-# Configure code-server with GitHub token
+# Configure code-server
 echo "[*] Configuring code-server..."
 mkdir -p /root/.config/code-server
 
 if [ -n "$GITHUB_TOKEN" ]; then
     echo "[✓] GitHub token detected; configuring token authentication"
-    cat > /root/.config/code-server/config.yaml << 'EOF'
+    cat > /root/.config/code-server/config.yaml << EOF
 bind-addr: 0.0.0.0:8443
 auth: token
 password: ${GITHUB_TOKEN}
 cert: false
 EOF
 else
-    echo "[*] GitHub token not set; using password auth (fallback)"
-    cat > /root/.config/code-server/config.yaml << 'EOF'
+    _cs_pass="${CODE_SERVER_PASSWORD:-changeme}"
+    echo "[*] GitHub token not set; using password auth (password: $CODE_SERVER_PASSWORD)"
+    cat > /root/.config/code-server/config.yaml << EOF
 bind-addr: 0.0.0.0:8443
 auth: password
-password: ${CODE_SERVER_PASSWORD:-changeme}
+password: ${_cs_pass}
 cert: false
 EOF
 fi
@@ -125,27 +142,35 @@ CODE_SERVER_PID=$!
 sleep 2
 echo "[✓] code-server started (PID: $CODE_SERVER_PID)"
 
-# Verify FastAPI app exists
-if [ ! -f /workspace/jarvis/app.py ]; then
-    echo "[!] WARNING: /workspace/jarvis/app.py not found!"
-    echo "    The FastAPI full_app needs to be placed in /workspace/jarvis/"
-    echo "    It will NOT start automatically."
+# Start FastAPI app
+if [ -f /workspace/jarvis/app.py ]; then
+    echo "[*] Starting FastAPI app on http://0.0.0.0:8000..."
+    cd /workspace/jarvis
+    uvicorn app:app --host 0.0.0.0 --port 8000 --log-level info > /tmp/fastapi.log 2>&1 &
+    FASTAPI_PID=$!
+    sleep 4
+    if kill -0 "$FASTAPI_PID" 2>/dev/null; then
+        echo "[✓] FastAPI started (PID: $FASTAPI_PID)"
+    else
+        echo "[!] FastAPI failed to start — check /tmp/fastapi.log:"
+        tail -20 /tmp/fastapi.log
+    fi
 else
-    echo "[✓] Found /workspace/jarvis/app.py"
+    echo "[!] WARNING: /workspace/jarvis/app.py not found — FastAPI not started"
 fi
 
-# Keep container alive
-echo "[*] Startup complete. Services running:"
-echo "    code-server:  https://0.0.0.0:8443 (VSCode)"
-echo "    FastAPI app:  http://0.0.0.0:8000 (after manual start in terminal)"
-echo "    CLI access:   ssh into container or use VSCode terminal"
-echo "    Docker:       Available for agent sandboxing"
+# Print service summary
 echo ""
-echo "To start FastAPI app, run in terminal:"
-echo "    cd /workspace/jarvis && uvicorn app:app --reload --host 0.0.0.0 --port 8000"
+echo "=========================================="
+echo "Services:"
+echo "  code-server : https://0.0.0.0:8443"
+echo "  FastAPI     : http://0.0.0.0:8000"
+echo "  Docker      : Available for agent sandboxing"
+echo "  Logs        : /tmp/fastapi.log, /tmp/code-server.log"
+echo "=========================================="
 echo ""
 
-# Wait for signals
+# Keep container alive
 wait
 ENTRYPOINT
 
@@ -154,3 +179,4 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 8443 8000
 
 ENTRYPOINT ["/entrypoint.sh"]
+

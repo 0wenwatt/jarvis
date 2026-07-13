@@ -7,9 +7,9 @@ services:
     env_file:
       - .env
     volumes:
-      # Workspace
-      - .workspace:/workspace/jarvis
-      - .code-server-config:/root/.config/code-server
+      # Workspace (app source code)
+      - ./workspace/jarvis:/workspace/jarvis
+      - ./.code-server-config:/root/.config/code-server
       
       # Docker-in-Docker
       - /var/run/docker.sock:/var/run/docker.sock
@@ -55,10 +55,12 @@ services:
     container_name: postgres-age
     networks:
       - jarvis-net
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: jarvis
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: ${POSTGRES_DB:-jarvis}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
       - "5432:5432"
     volumes:
