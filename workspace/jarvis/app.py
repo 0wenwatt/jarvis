@@ -165,8 +165,22 @@ except ImportError:
 _ta_messages: TypeAdapter[list[ModelMessage]] = TypeAdapter(list[ModelMessage])
 
 
+def _safe_session_dir(session_id: str) -> Path:
+    """Return the per-session workspaces subdirectory.
+
+    Uses a SHA-256 digest of the session_id as the directory name so that
+    user-supplied session_id values can never traverse outside WORKSPACES_DIR,
+    regardless of their content.
+    """
+    import hashlib
+
+    # Deterministic, filesystem-safe directory name derived from session_id
+    dir_name = hashlib.sha256(session_id.encode()).hexdigest()
+    return WORKSPACES_DIR / dir_name
+
+
 def _history_path(session_id: str) -> Path:
-    p = WORKSPACES_DIR / session_id
+    p = _safe_session_dir(session_id)
     p.mkdir(parents=True, exist_ok=True)
     return p / "history.json"
 
