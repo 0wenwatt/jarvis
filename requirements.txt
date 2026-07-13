@@ -15,6 +15,7 @@ psycopg[binary]>=3.0
 # Use this to install directly from the official Apache AGE GitHub repo
 git+https://github.com/apache/age.git#subdirectory=drivers/python
 asyncpg>=0.30.0
+pgvector>=0.3.0
 
 # FastAPI + Web server
 fastapi>=0.125.0
@@ -25,6 +26,15 @@ python-dotenv>=1.0.0
 # Async + concurrency
 aiofiles>=23.0.0
 asyncio-contextmanager>=1.0.0
+
+# RAG stack
+# LlamaIndex: used minimally — only PGVectorStore + VectorStoreIndex for vectorRAG
+llama-index-core>=0.12.0
+llama-index-vector-stores-postgres>=0.3.0
+llama-index-embeddings-openai>=0.3.0
+# Web crawling — accepts crawl4ai JSON output; also crawls via httpx fallback
+crawl4ai>=0.4.0
+html2text>=2024.2.26
 
 # Data processing
 pandas>=2.0.0
