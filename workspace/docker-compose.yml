@@ -1,0 +1,75 @@
+services:
+  jarvis-dev:
+    build: .
+    container_name: jarvis-dev
+    networks:
+      - jarvis-net
+    env_file:
+      - .env
+    volumes:
+      # Workspace
+      - .workspace:/workspace/jarvis
+      - .code-server-config:/root/.config/code-server
+      
+      # Docker-in-Docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      
+      # Persistent volumes (created automatically)
+      - jarvis-workspaces:/workspace/jarvis/workspaces
+      - jarvis-skills:/workspace/jarvis/skills
+    
+    ports:
+      # code-server (VSCode in browser)
+      - "8443:8443"
+      
+      # FastAPI web GUI
+      - "8000:8000"
+    
+    environment:
+      # These are overridden by env_file but serve as defaults
+      POSTGRES_HOST: postgres-age
+      POSTGRES_PORT: 5432
+      DOCKER_HOST: unix:///var/run/docker.sock
+    
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+        reservations:
+          memory: 512m
+          cpus: "0.5"
+    
+    restart: unless-stopped
+    depends_on:
+      - postgres-age
+    
+    # Interactive TTY for terminal access
+    stdin_open: true
+    tty: true
+    
+    entrypoint: ["/entrypoint.sh"]
+
+  postgres-age:
+    image: apache/age:latest
+    container_name: postgres-age
+    networks:
+      - jarvis-net
+    environment:
+      POSTGRES_DB: jarvis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-age-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+networks:
+  jarvis-net:
+    external: true
+
+volumes:
+  jarvis-workspaces:
+  jarvis-skills:
+  postgres-age-data:
