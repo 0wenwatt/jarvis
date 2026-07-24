@@ -77,7 +77,7 @@ services:
 
 networks:
   jarvis-net:
-    external: true
+    driver: bridge
 
 volumes:
   jarvis-workspaces:

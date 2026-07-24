@@ -15,7 +15,6 @@ This workspace is managed by the pydantic-deep Demo Agent.
 - **Data analysis**: Load the `data-analysis` skill for CSV analysis with pandas and visualization
 - **Code review**: Delegate to the `code-reviewer` subagent for quality and security review
 - **Test generation**: Load the `test-generator` skill for pytest test cases
-- **GitHub queries**: Mock GitHub API tools (repos, issues, PRs, users)
 - **Subagent delegation**: joke-generator, code-reviewer, general-purpose subagents
 
 ## Conventions

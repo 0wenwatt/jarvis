@@ -1,4 +1,4 @@
-"""Full-featured example application with FastAPI backend and WebSocket streaming.
+"""Full-featured application with FastAPI backend and WebSocket streaming.
 
 This example demonstrates ALL pydantic-deep features:
 
@@ -6,7 +6,6 @@ Core:
 - DockerSandbox for file operations and code execution
 - RuntimeConfig (python-datascience) for pre-installed packages
 - BASE_PROMPT as foundation for agent instructions
-- Custom tools (mock GitHub tools via FunctionToolset)
 
 Toolsets:
 - Console toolset (ls, read_file, write_file, edit_file, glob, grep, execute)
@@ -57,7 +56,6 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from github_tools import GITHUB_SYSTEM_PROMPT, create_github_toolset
 from pydantic import TypeAdapter
 from pydantic_ai import (
     BinaryContent,
@@ -583,15 +581,14 @@ MAIN_INSTRUCTIONS = f"""{BASE_PROMPT}
 ## Application-Specific Capabilities
 
 1. **File Operations**: Read, write, edit, and search files in the workspace
-2. **GitHub Integration**: Query repos, issues, PRs, and users (mock data for demo)
-3. **Code Execution**: Execute Python code in an isolated Docker sandbox \
+2. **Code Execution**: Execute Python code in an isolated Docker sandbox \
 (pre-installed: pandas, numpy, matplotlib, scikit-learn, seaborn, plotly)
-4. **Data Analysis**: Load the 'data-analysis' skill for comprehensive CSV analysis
-5. **Code Review**: Delegate to the 'code-reviewer' subagent for code quality review
-6. **Entertainment**: Delegate to the 'joke-generator' subagent for humor
-7. **Quick Reference**: Load the 'quick-reference' skill for command shortcuts
-8. **Dynamic Agents**: Create new specialized agents at runtime with `create_agent(name, description, instructions)`, then delegate tasks to them. Use `list_agents()` to see created agents, `remove_agent(name)` to delete them. Allowed models: anthropic:claude-sonnet-4-6, anthropic:claude-haiku-4-5-20251001, anthropic:claude-haiku-4-5-20251001.
-9. **Plan Mode**: For complex tasks, delegate to the 'planner' subagent which will \
+3. **Data Analysis**: Load the 'data-analysis' skill for comprehensive CSV analysis
+4. **Code Review**: Delegate to the 'code-reviewer' subagent for code quality review
+5. **Entertainment**: Delegate to the 'joke-generator' subagent for humor
+6. **Quick Reference**: Load the 'quick-reference' skill for command shortcuts
+7. **Dynamic Agents**: Create new specialized agents at runtime with `create_agent(name, description, instructions)`, then delegate tasks to them. Use `list_agents()` to see created agents, `remove_agent(name)` to delete them. Allowed models: anthropic:claude-sonnet-4-6, anthropic:claude-haiku-4-5-20251001, anthropic:claude-haiku-4-5-20251001.
+8. **Plan Mode**: For complex tasks, delegate to the 'planner' subagent which will \
 analyze the codebase, ask clarifying questions with options, and create a step-by-step \
 implementation plan. Trigger when the user says 'use plan mode' or for tasks requiring \
 architectural decisions and multi-file changes. The plan is saved to a markdown file.
@@ -657,7 +654,6 @@ just call it and wait for approval. Never refuse to run a command or say you can
 - When asked to analyze data, first load the 'data-analysis' skill for best practices
 - When asked for jokes or entertainment, delegate to the 'joke-generator' subagent
 - When asked to review code, delegate to the 'code-reviewer' subagent
-- For GitHub queries, use the appropriate github_* tools
 - For code execution, write the code to a file first, then execute it
 
 ## File Locations
@@ -665,8 +661,6 @@ just call it and wait for approval. Never refuse to run a command or say you can
 - Uploaded files are in: /uploads/
 - Your workspace is: /workspace/
 - Save generated files (charts, reports) to /workspace/
-
-{GITHUB_SYSTEM_PROMPT}
 """
 
 
@@ -689,9 +683,6 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
     - Skills (filesystem + programmatic)
     - Human-in-the-loop (execute approval)
     """
-    # Custom GitHub toolset (mock — kept for demo; real GitHub ops via GitHub MCP below)
-    github_toolset = create_github_toolset(id="github")
-
     # Dynamic agent factory — lets the agent create new specialized agents at runtime
     agent_registry = DynamicAgentRegistry()
     factory_toolset = create_agent_factory_toolset(
@@ -731,7 +722,7 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
         include_subagents=True,
         include_skills=True,
         include_execute=True,  # Force include - backend provided via deps at runtime
-        toolsets=[github_toolset, factory_toolset] + extra_toolsets,
+        toolsets=[factory_toolset] + extra_toolsets,
         # --- Subagents (joke-generator + code-reviewer + general-purpose + dynamic) ---
         subagents=SUBAGENT_CONFIGS,
         include_builtin_subagents=True,

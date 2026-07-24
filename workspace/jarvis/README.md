@@ -7,8 +7,7 @@ A complete demonstration of **every** pydantic-deep feature in a web application
 | # | Feature | Description |
 |---|---------|-------------|
 | 1 | **DockerSandbox** | Full backend with file ops + code execution in isolated containers |
-| 2 | **Custom Tools** | 5 mock GitHub tools (repos, issues, PRs, users, stats) via `FunctionToolset` |
-| 3 | **Code Execution** | Python code execution in isolated Docker sandbox |
+| 2 | **Code Execution** | Python code execution in isolated Docker sandbox |
 | 4 | **Human-in-the-Loop** | `interrupt_on` — execute commands require approval dialog |
 | 5 | **Skills** | Data analysis, code review, test generator skills from SKILL.md files |
 | 6 | **Programmatic Skills** | `Skill` dataclass instance (quick-reference card) |
@@ -53,63 +52,56 @@ Then open http://localhost:8080 in your browser.
 
 ## Usage Examples
 
-### 1. GitHub Queries (Mock Data)
-```
-"List my GitHub repositories"
-"Show open issues in pydantic-deep"
-"Get stats for the ml-pipeline repo"
-```
-
-### 2. Data Analysis with Skills
+### 1. Data Analysis with Skills
 ```
 1. Upload a CSV file using the sidebar
 2. "Load the data-analysis skill"
 3. "Analyze the uploaded sales.csv file and create a visualization"
 ```
 
-### 3. Code Review (Subagent)
+### 2. Code Review (Subagent)
 ```
 "Review the code in /workspace/script.py"
 ```
 The agent delegates to the `code-reviewer` subagent for quality and security analysis.
 
-### 4. Joke Generator (Subagent)
+### 3. Joke Generator (Subagent)
 ```
 "Tell me a joke about Python programming"
 ```
 
-### 5. Code Execution (Human-in-the-Loop)
+### 4. Code Execution (Human-in-the-Loop)
 ```
 "Write a Python script that generates the first 10 prime numbers and save it to primes.py"
 "Run the primes.py script"
 ```
 Execute commands trigger an approval dialog before running.
 
-### 6. Safety Gate (Hook)
+### 5. Safety Gate (Hook)
 ```
 "Run rm -rf /"
 ```
 The `safety_gate` hook blocks dangerous shell patterns before execution.
 
-### 7. Permission Middleware
+### 6. Permission Middleware
 ```
 "Read /etc/passwd"
 ```
 The `PermissionMiddleware` blocks access to sensitive system paths.
 
-### 8. Image Support
+### 7. Image Support
 ```
 1. Upload a PNG/JPG image
 2. "What's in this image?"
 ```
 
-### 9. List Available Skills
+### 8. List Available Skills
 ```
 "List available skills"
 ```
 Shows data-analysis, code-review, test-generator, and quick-reference skills.
 
-### 10. Config Panel
+### 9. Config Panel
 Click the **Config** tab in the sidebar to view all active features, hooks, middleware, processors, subagents, skills, and live tool usage statistics.
 
 ## Project Structure
@@ -118,7 +110,6 @@ Click the **Config** tab in the sidebar to view all active features, hooks, midd
 full_app/
 ├── app.py                  # FastAPI backend with all features wired
 ├── audit_middleware.py      # AuditCapability + PermissionCapability
-├── github_tools.py          # Mock GitHub tools (FunctionToolset)
 ├── skills/
 │   ├── data-analysis/
 │   │   └── SKILL.md         # Data analysis skill
@@ -188,7 +179,7 @@ agent = create_deep_agent(
     include_subagents=True,
     include_skills=True,
     include_execute=True,
-    toolsets=[github_toolset],
+    toolsets=[factory_toolset],
     # Subagents
     subagents=SUBAGENT_CONFIGS,
     include_builtin_subagents=True,
@@ -239,7 +230,7 @@ session_manager.start_cleanup_loop(interval=300)
 
 ### Adding More Tools
 
-Edit `github_tools.py` to add more mock tools or create real API integrations.
+Add new toolsets in `app.py` and include them in `create_deep_agent(..., toolsets=[...])`.
 
 ### Adding Skills
 

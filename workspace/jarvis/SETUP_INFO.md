@@ -450,7 +450,6 @@ tailscale up --authkey=$TAILSCALE_AUTHKEY
 │   ├── app.py                       # FastAPI full_app (start manually)
 │   ├── requirements.txt             # Python dependencies
 │   ├── SETUP_INFO.md               # This file
-│   ├── github_tools.py             # Mock GitHub toolset
 │   ├── audit_middleware.py         # Audit + permission capabilities
 │   │
 │   ├── skills/
