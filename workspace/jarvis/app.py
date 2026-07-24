@@ -44,6 +44,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import re
 import uuid
 from contextlib import asynccontextmanager
@@ -57,6 +58,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from github_tools import GITHUB_SYSTEM_PROMPT, create_github_toolset
+from pydantic import TypeAdapter
 from pydantic_ai import (
     BinaryContent,
     FinalResultEvent,
@@ -68,6 +70,7 @@ from pydantic_ai import (
 )
 from pydantic_ai._agent_graph import End, UserPromptNode
 from pydantic_ai.agent import Agent
+from pydantic_ai.mcp import MCPToolset
 from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
@@ -135,6 +138,126 @@ ENV_FILE = APP_DIR / ".env"
 # Create directories if they don't exist
 WORKSPACE_DIR.mkdir(exist_ok=True)
 WORKSPACES_DIR.mkdir(exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Logfire — configure early so it instruments everything that follows.
+# Gracefully disabled when LOGFIRE_TOKEN is absent.
+# ---------------------------------------------------------------------------
+try:
+    import logfire
+
+    _logfire_token = os.environ.get("LOGFIRE_TOKEN", "").strip()
+    if _logfire_token:
+        logfire.configure(token=_logfire_token)
+        logfire.instrument_pydantic_ai()
+        logger.info("Logfire configured — tracing active")
+    else:
+        logfire.configure(send_to_logfire=False)
+        logger.info("LOGFIRE_TOKEN not set — Logfire disabled (set token in .env to enable)")
+except ImportError:
+    logger.warning("logfire package not installed — skipping observability setup")
+
+# ---------------------------------------------------------------------------
+# Message-history persistence helpers
+# Histories are stored as JSON in WORKSPACES_DIR/{session_id}/history.json
+# The workspaces volume is persistent across container restarts.
+# ---------------------------------------------------------------------------
+_ta_messages: TypeAdapter[list[ModelMessage]] = TypeAdapter(list[ModelMessage])
+
+
+def _safe_session_dir(session_id: str) -> Path:
+    """Return the per-session workspaces subdirectory.
+
+    Uses a SHA-256 digest of the session_id as the directory name so that
+    user-supplied session_id values can never traverse outside WORKSPACES_DIR,
+    regardless of their content.
+    """
+    import hashlib
+
+    # Deterministic, filesystem-safe directory name derived from session_id
+    dir_name = hashlib.sha256(session_id.encode()).hexdigest()
+    return WORKSPACES_DIR / dir_name
+
+
+def _history_path(session_id: str) -> Path:
+    p = _safe_session_dir(session_id)
+    p.mkdir(parents=True, exist_ok=True)
+    return p / "history.json"
+
+
+def _save_history(session_id: str, history: list[ModelMessage]) -> None:
+    try:
+        _history_path(session_id).write_bytes(_ta_messages.dump_json(history))
+    except Exception as exc:
+        logger.warning(f"Failed to save history for {session_id}: {exc}")
+
+
+def _load_history(session_id: str) -> list[ModelMessage]:
+    try:
+        p = _history_path(session_id)
+        if p.exists():
+            msgs = _ta_messages.validate_json(p.read_bytes())
+            logger.info(f"Loaded {len(msgs)} persisted messages for session {session_id}")
+            return msgs
+    except Exception as exc:
+        logger.warning(f"Failed to load history for {session_id}: {exc}")
+    return []
+
+# ---------------------------------------------------------------------------
+# MCP toolset builders — each returns an MCPToolset or None if prerequisites
+# are missing (token / password not set).  Graceful degradation: the agent
+# still starts without them.
+# ---------------------------------------------------------------------------
+
+
+def _build_github_mcp() -> MCPToolset | None:
+    """GitHub MCP server (official binary, stdio transport).
+
+    Requires GITHUB_TOKEN in environment and the github-mcp-server binary
+    installed at /usr/local/bin/github-mcp-server (added by Dockerfile).
+    """
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if not token:
+        logger.info("GITHUB_TOKEN not set — GitHub MCP server disabled")
+        return None
+    binary = "/usr/local/bin/github-mcp-server"
+    if not Path(binary).exists():
+        logger.warning(f"{binary} not found — GitHub MCP server disabled (rebuild image?)")
+        return None
+    logger.info("GitHub MCP server enabled")
+    return MCPToolset(
+        {
+            "command": binary,
+            "args": ["stdio"],
+            "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": token},
+        }
+    )
+
+
+def _build_postgres_mcp() -> MCPToolset | None:
+    """PostgreSQL MCP server (@modelcontextprotocol/server-postgres via npx).
+
+    Connects to postgres-age with the credentials from environment variables.
+    Works for plain SQL queries including Apache AGE graph queries.
+    Requires POSTGRES_PASSWORD to be set.
+    """
+    host = os.environ.get("POSTGRES_HOST", "postgres-age")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "jarvis")
+    user = os.environ.get("POSTGRES_USER", "postgres")
+    password = os.environ.get("POSTGRES_PASSWORD", "").strip()
+    if not password:
+        logger.info("POSTGRES_PASSWORD not set — Postgres MCP server disabled")
+        return None
+    conn_str = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    logger.info(f"Postgres MCP server enabled (host={host} db={db})")
+    return MCPToolset(
+        {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-postgres", conn_str],
+        }
+    )
+
 
 
 _TEXT_EXTS = {
@@ -566,7 +689,7 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
     - Skills (filesystem + programmatic)
     - Human-in-the-loop (execute approval)
     """
-    # Custom GitHub toolset
+    # Custom GitHub toolset (mock — kept for demo; real GitHub ops via GitHub MCP below)
     github_toolset = create_github_toolset(id="github")
 
     # Dynamic agent factory — lets the agent create new specialized agents at runtime
@@ -582,6 +705,15 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
         max_agents=5,
         id="agent-factory",
     )
+
+    # MCP toolsets — GitHub (real API) and PostgreSQL/AGE
+    extra_toolsets = []
+    _github_mcp = _build_github_mcp()
+    if _github_mcp is not None:
+        extra_toolsets.append(_github_mcp)
+    _postgres_mcp = _build_postgres_mcp()
+    if _postgres_mcp is not None:
+        extra_toolsets.append(_postgres_mcp)
 
     # Sliding window processor for long conversations
     sliding_window = create_sliding_window_processor(
@@ -599,7 +731,7 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
         include_subagents=True,
         include_skills=True,
         include_execute=True,  # Force include - backend provided via deps at runtime
-        toolsets=[github_toolset, factory_toolset],
+        toolsets=[github_toolset, factory_toolset] + extra_toolsets,
         # --- Subagents (joke-generator + code-reviewer + general-purpose + dynamic) ---
         subagents=SUBAGENT_CONFIGS,
         include_builtin_subagents=True,
@@ -658,6 +790,8 @@ async def get_or_create_session(session_id: str) -> UserSession:
 
     # Create and store session
     session = UserSession(session_id=session_id, deps=deps, checkpoint_store=cp_store)
+    # Restore persisted message history so agent survives container restarts
+    session.message_history = _load_history(session_id)
     user_sessions[session_id] = session
 
     logger.info(f"Created new session: {session_id}")
@@ -1096,6 +1230,8 @@ async def run_agent_with_streaming(
     # Update session's message history for next request
     session.message_history = result.all_messages()
     logger.info(f"Updated message history to {len(session.message_history)} messages")
+    # Persist to disk so history survives container restarts
+    _save_history(session.session_id, session.message_history)
 
     # Send final response
     logger.info(f"Sending response: {str(result.output)[:200]}...")
