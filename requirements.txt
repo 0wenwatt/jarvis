@@ -32,8 +32,8 @@ asyncio-contextmanager>=1.0.0
 llama-index-core>=0.12.0
 llama-index-vector-stores-postgres>=0.3.0
 llama-index-embeddings-openai>=0.3.0
-# Web crawling — accepts crawl4ai JSON output; also crawls via httpx fallback
-crawl4ai>=0.4.0
+# Web crawling — built-in MCP server (python -m crawl4ai.mcp stdio) requires 0.9+
+crawl4ai>=0.9.0
 html2text>=2024.2.26
 
 # Data processing
