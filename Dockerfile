@@ -186,7 +186,7 @@ ENTRYPOINT
 
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 8443 8000
+EXPOSE 8443 8000 7932
 
 ENTRYPOINT ["/entrypoint.sh"]
 

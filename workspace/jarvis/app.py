@@ -879,6 +879,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Instrument FastAPI with Logfire so every HTTP request/response and WebSocket
+# event shows up as a Logfire span alongside the agent tool-call traces.
+try:
+    import logfire as _logfire_app
+
+    _logfire_app.instrument_fastapi(app)
+except (ImportError, Exception):
+    pass  # Logfire absent or not yet configured — safe to skip
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -24,6 +24,9 @@ services:
       
       # FastAPI web GUI
       - "8000:8000"
+      
+      # PydanticAI agent.to_web() Web UI (web_ui_demo.py — Tailscale-accessible)
+      - "7932:7932"
     
     environment:
       # These are overridden by env_file but serve as defaults

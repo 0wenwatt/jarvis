@@ -1,6 +1,7 @@
 # Core pydantic-deep framework
 pydantic-deep[sandbox,web,yaml,mcp,logfire]>=0.3.35
-pydantic-ai>=2.0.0
+# [web] extra pulls in starlette + uvicorn for agent.to_web() (port 7932 Web UI demo)
+pydantic-ai[web]>=2.0.0
 
 # LLM Provider Integrations
 # Supports: Anthropic, OpenAI, Google Gemini, Groq, Mistral
