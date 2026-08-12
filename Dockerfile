@@ -55,12 +55,22 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.
 RUN npm install -g @modelcontextprotocol/server-postgres
 
 # Download GitHub MCP server binary (Go binary, official from github.com/github/github-mcp-server)
+# Detects host arch so the image builds correctly on both x86_64 and arm64/aarch64.
 ENV GITHUB_MCP_VERSION=1.5.0
-RUN curl -fsSL \
-    "https://github.com/github/github-mcp-server/releases/download/v${GITHUB_MCP_VERSION}/github-mcp-server_Linux_x86_64.tar.gz" \
-    | tar -xzf - -C /tmp/ \
+RUN ARCH="$(uname -m)" && \
+    case "$ARCH" in \
+      aarch64|arm64) GH_ARCH="arm64" ;; \
+      *) GH_ARCH="x86_64" ;; \
+    esac && \
+    curl -fsSL \
+      "https://github.com/github/github-mcp-server/releases/download/v${GITHUB_MCP_VERSION}/github-mcp-server_Linux_${GH_ARCH}.tar.gz" \
+      | tar -xzf - -C /tmp/ \
     && mv /tmp/github-mcp-server /usr/local/bin/github-mcp-server \
     && chmod +x /usr/local/bin/github-mcp-server
+
+# Install Playwright Chromium for crawl4ai browser-based crawling.
+# --with-deps installs OS-level browser dependencies (libnss, fonts, etc.)
+RUN playwright install chromium --with-deps
 
 WORKDIR /workspace/jarvis
 
@@ -176,7 +186,7 @@ ENTRYPOINT
 
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 8443 8000
+EXPOSE 8443 8000 7932
 
 ENTRYPOINT ["/entrypoint.sh"]
 

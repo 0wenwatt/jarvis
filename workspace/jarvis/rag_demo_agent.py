@@ -80,7 +80,24 @@ from rag import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Agent dependencies (injected via RunContext)
+# Logfire — configure early so it instruments the agent and FastAPI app.
+# Mirrors the pattern used in app.py: gracefully disabled when token is absent.
+# ---------------------------------------------------------------------------
+try:
+    import logfire
+
+    _logfire_token = os.environ.get("LOGFIRE_TOKEN", "").strip()
+    if _logfire_token:
+        logfire.configure(token=_logfire_token)
+        logfire.instrument_pydantic_ai()
+        logger.info("Logfire configured — tracing active (rag_demo_agent)")
+    else:
+        logfire.configure(send_to_logfire=False)
+        logger.info("LOGFIRE_TOKEN not set — Logfire disabled in rag_demo_agent")
+except ImportError:
+    logger.warning("logfire package not installed — skipping observability setup")
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -373,6 +390,14 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Instrument FastAPI with Logfire (no-op if logfire is absent or not configured).
+try:
+    import logfire as _lf
+
+    _lf.instrument_fastapi(app)
+except (ImportError, Exception):
+    pass
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 # Core pydantic-deep framework
 pydantic-deep[sandbox,web,yaml,mcp,logfire]>=0.3.35
-pydantic-ai>=2.0.0
+# [web] extra pulls in starlette + uvicorn for agent.to_web() (port 7932 Web UI demo)
+pydantic-ai[web]>=2.0.0
 
 # LLM Provider Integrations
 # Supports: Anthropic, OpenAI, Google Gemini, Groq, Mistral
@@ -32,8 +33,8 @@ asyncio-contextmanager>=1.0.0
 llama-index-core>=0.12.0
 llama-index-vector-stores-postgres>=0.3.0
 llama-index-embeddings-openai>=0.3.0
-# Web crawling — accepts crawl4ai JSON output; also crawls via httpx fallback
-crawl4ai>=0.4.0
+# Web crawling — built-in MCP server (python -m crawl4ai.mcp stdio) requires 0.9+
+crawl4ai>=0.9.0
 html2text>=2024.2.26
 
 # Data processing
@@ -55,6 +56,15 @@ requests>=2.31.0
 httpx>=0.25.0
 chardet>=5.0.0
 pyyaml>=6.0
+
+# AST/CPG codebase comprehension (Module 1 & 2)
+# codegen wraps Tree-sitter for safe cross-file symbol analysis
+codegen>=0.1.0
+# cognee provides vector + relational graph persistence via PostgreSQL
+cognee>=0.1.0
+
+# LangGraph orchestration (Module 4)
+langgraph>=0.2.0
 
 # Development & debugging
 ipython>=8.10.0

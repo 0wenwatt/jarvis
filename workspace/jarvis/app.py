@@ -232,7 +232,30 @@ def _build_github_mcp() -> MCPToolset | None:
     )
 
 
-def _build_postgres_mcp() -> MCPToolset | None:
+def _build_crawl4ai_mcp() -> MCPToolset | None:
+    """Crawl4AI MCP server (built-in stdio transport, requires crawl4ai>=0.9).
+
+    Runs ``python -m crawl4ai.mcp stdio`` as a child process.
+    Set CRAWL4AI_API_TOKEN if your Crawl4AI instance requires authentication.
+    """
+    env: dict[str, str] = {}
+    token = os.environ.get("CRAWL4AI_API_TOKEN", "").strip()
+    if token:
+        env["CRAWL4AI_API_TOKEN"] = token
+    base_url = os.environ.get("CRAWL4AI_BASE_URL", "").strip()
+    if base_url:
+        env["CRAWL4AI_BASE_URL"] = base_url
+    logger.info("Crawl4AI MCP server enabled (python -m crawl4ai.mcp stdio)")
+    return MCPToolset(
+        {
+            "command": "python",
+            "args": ["-m", "crawl4ai.mcp", "stdio"],
+            **({"env": env} if env else {}),
+        }
+    )
+
+
+
     """PostgreSQL MCP server (@modelcontextprotocol/server-postgres via npx).
 
     Connects to postgres-age with the credentials from environment variables.
@@ -705,6 +728,9 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
     _postgres_mcp = _build_postgres_mcp()
     if _postgres_mcp is not None:
         extra_toolsets.append(_postgres_mcp)
+    _crawl4ai_mcp = _build_crawl4ai_mcp()
+    if _crawl4ai_mcp is not None:
+        extra_toolsets.append(_crawl4ai_mcp)
 
     # Sliding window processor for long conversations
     sliding_window = create_sliding_window_processor(
@@ -852,6 +878,15 @@ app = FastAPI(
     description="Full-featured example demonstrating ALL pydantic-deep capabilities",
     lifespan=lifespan,
 )
+
+# Instrument FastAPI with Logfire so every HTTP request/response and WebSocket
+# event shows up as a Logfire span alongside the agent tool-call traces.
+try:
+    import logfire as _logfire_app
+
+    _logfire_app.instrument_fastapi(app)
+except (ImportError, Exception):
+    pass  # Logfire absent or not yet configured — safe to skip
 
 app.add_middleware(
     CORSMiddleware,
