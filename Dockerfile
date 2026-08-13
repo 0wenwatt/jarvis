@@ -34,6 +34,20 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# GitHub CLI (gh) — for git credential helper and GitHub operations
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv — fast Python package/tool manager
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:/root/.local/bin:$PATH"
+
 # Create workspace and set permissions
 RUN mkdir -p /workspace /workspace/jarvis /workspace/jarvis/workspaces /workspace/jarvis/skills
 
@@ -49,6 +63,11 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh
 # Install Python dependencies from requirements.txt
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+
+# Install authsome credential gateway CLI
+# authsome requires Python 3.13+; uv handles the Python version automatically
+RUN uv tool install --python 3.13 authsome && \
+    ln -sf /root/.local/bin/authsome /usr/local/bin/authsome
 
 # Install PostgreSQL MCP server (Node.js, official reference implementation)
 # Works with plain PostgreSQL and Apache AGE (via SQL interface)
@@ -67,113 +86,8 @@ WORKDIR /workspace/jarvis
 # Create startup scripts directory
 RUN mkdir -p /etc/startup.d
 
-# Entrypoint script that starts all services
-RUN cat > /entrypoint.sh << 'ENTRYPOINT'
-#!/bin/bash
-set -e
-
-echo "=========================================="
-echo "Jarvis Development Environment Startup"
-echo "=========================================="
-
-# Load environment variables from .env if it exists
-if [ -f /workspace/.env ]; then
-    echo "[*] Loading environment from /workspace/.env"
-    set -a; source /workspace/.env; set +a
-fi
-
-if [ -f /workspace/jarvis/.env ]; then
-    echo "[*] Loading environment from /workspace/jarvis/.env"
-    set -a; source /workspace/jarvis/.env; set +a
-fi
-
-# Add docker group to current user for docker socket access
-if [ -S /var/run/docker.sock ]; then
-    echo "[*] Docker socket found at /var/run/docker.sock"
-    docker ps > /dev/null 2>&1 && echo "[✓] Docker socket accessible" || echo "[!] Docker socket may not be accessible (permissions issue)"
-fi
-
-# Start Tailscale if auth key is set
-if [ -n "$TAILSCALE_AUTHKEY" ]; then
-    echo "[*] Starting Tailscale daemon..."
-    tailscaled --tun=userspace-networking &
-    TAILSCALED_PID=$!
-    sleep 2
-    tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-dns=false 2>&1 | tee -a /tmp/tailscale.log &
-    sleep 3
-    if tailscale status > /dev/null 2>&1; then
-        echo "[✓] Tailscale started successfully"
-        TAILSCALE_IP=$(tailscale ip -4)
-        echo "    Tailscale IP: $TAILSCALE_IP"
-    else
-        echo "[!] Tailscale startup issue; continuing anyway"
-    fi
-else
-    echo "[*] TAILSCALE_AUTHKEY not set; skipping Tailscale"
-fi
-
-# Configure code-server
-echo "[*] Configuring code-server..."
-mkdir -p /root/.config/code-server
-
-if [ -n "$GITHUB_TOKEN" ]; then
-    echo "[✓] GitHub token detected; configuring token authentication"
-    cat > /root/.config/code-server/config.yaml << EOF
-bind-addr: 0.0.0.0:8443
-auth: token
-password: ${GITHUB_TOKEN}
-cert: false
-EOF
-else
-    _cs_pass="${CODE_SERVER_PASSWORD:-changeme}"
-    echo "[*] GitHub token not set; using password auth (password: $CODE_SERVER_PASSWORD)"
-    cat > /root/.config/code-server/config.yaml << EOF
-bind-addr: 0.0.0.0:8443
-auth: password
-password: ${_cs_pass}
-cert: false
-EOF
-fi
-
-# Start code-server in background
-echo "[*] Starting code-server on https://0.0.0.0:8443"
-code-server --config /root/.config/code-server/config.yaml > /tmp/code-server.log 2>&1 &
-CODE_SERVER_PID=$!
-sleep 2
-echo "[✓] code-server started (PID: $CODE_SERVER_PID)"
-
-# Start FastAPI app
-if [ -f /workspace/jarvis/app.py ]; then
-    echo "[*] Starting FastAPI app on http://0.0.0.0:8000..."
-    cd /workspace/jarvis
-    uvicorn app:app --host 0.0.0.0 --port 8000 --log-level info > /tmp/fastapi.log 2>&1 &
-    FASTAPI_PID=$!
-    sleep 4
-    if kill -0 "$FASTAPI_PID" 2>/dev/null; then
-        echo "[✓] FastAPI started (PID: $FASTAPI_PID)"
-    else
-        echo "[!] FastAPI failed to start — check /tmp/fastapi.log:"
-        tail -20 /tmp/fastapi.log
-    fi
-else
-    echo "[!] WARNING: /workspace/jarvis/app.py not found — FastAPI not started"
-fi
-
-# Print service summary
-echo ""
-echo "=========================================="
-echo "Services:"
-echo "  code-server : https://0.0.0.0:8443"
-echo "  FastAPI     : http://0.0.0.0:8000"
-echo "  Docker      : Available for agent sandboxing"
-echo "  Logs        : /tmp/fastapi.log, /tmp/code-server.log"
-echo "=========================================="
-echo ""
-
-# Keep container alive
-wait
-ENTRYPOINT
-
+# Copy entrypoint script (kept as a separate file to avoid CRLF issues on Windows)
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8443 8000

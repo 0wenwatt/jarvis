@@ -68,7 +68,7 @@ from pydantic_ai import (
 )
 from pydantic_ai._agent_graph import End, UserPromptNode
 from pydantic_ai.agent import Agent
-from pydantic_ai.mcp import MCPToolset
+from pydantic_ai.mcp import MCPToolset, StdioTransport
 from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
@@ -224,11 +224,11 @@ def _build_github_mcp() -> MCPToolset | None:
         return None
     logger.info("GitHub MCP server enabled")
     return MCPToolset(
-        {
-            "command": binary,
-            "args": ["stdio"],
-            "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": token},
-        }
+        StdioTransport(
+            command=binary,
+            args=["stdio"],
+            env={"GITHUB_PERSONAL_ACCESS_TOKEN": token},
+        )
     )
 
 
@@ -250,10 +250,10 @@ def _build_postgres_mcp() -> MCPToolset | None:
     conn_str = f"postgresql://{user}:{password}@{host}:{port}/{db}"
     logger.info(f"Postgres MCP server enabled (host={host} db={db})")
     return MCPToolset(
-        {
-            "command": "npx",
-            "args": ["-y", "@modelcontextprotocol/server-postgres", conn_str],
-        }
+        StdioTransport(
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-postgres", conn_str],
+        )
     )
 
 
