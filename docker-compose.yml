@@ -18,6 +18,18 @@ services:
       - jarvis-workspaces:/workspace/jarvis/workspaces
       - jarvis-skills:/workspace/jarvis/skills
 
+      # Tailscale node state — persists across restarts so it reconnects
+      # automatically without needing a fresh auth key every time.
+      - tailscale-state:/var/lib/tailscale
+
+    # Required for Tailscale to create a real tun0 interface (not just the
+    # userspace proxy), which is what makes 8443/8000 reachable from other
+    # tailnet devices like your phone.
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
     ports:
       # code-server (VSCode in browser)
       - "8443:8443"
@@ -171,6 +183,7 @@ volumes:
   postgres-age-data:
   jarvis-workspaces:
   jarvis-skills:
+  tailscale-state:
   authsome-postgres-data:
   authsome-redis-data:
   authsome-data:

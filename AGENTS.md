@@ -9,3 +9,7 @@
 - Never commit real credentials.
 - Keep local secrets only in `.env` and `workspace/.env` (ignored by git).
 - Keep shareable templates in `.env.example` and `workspace/.env.example`.
+
+## Project filetree
+- The file tree must be a deep nested tree.
+-

@@ -44,21 +44,59 @@ fi
 # -------------------------------------------------------
 # Tailscale
 # -------------------------------------------------------
-if [ -n "$TAILSCALE_AUTHKEY" ]; then
-    echo "[*] Starting Tailscale daemon..."
-    tailscaled --tun=userspace-networking > /tmp/tailscaled.log 2>&1 &
-    sleep 2
-    tailscale up --authkey="$TAILSCALE_AUTHKEY" --accept-dns=false > /tmp/tailscale.log 2>&1 &
-    sleep 3
-    if tailscale status > /dev/null 2>&1; then
-        echo "[✓] Tailscale started successfully"
-        TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo 'unavailable')
-        echo "    Tailscale IP: $TAILSCALE_IP"
-    else
-        echo "[!] Tailscale startup issue; continuing anyway"
-    fi
+mkdir -p /var/lib/tailscale
+_TS_SOCK=/var/run/tailscale/tailscaled.sock
+mkdir -p "$(dirname "$_TS_SOCK")"
+
+# Prefer a real tun interface (needed for the phone to reach 8443/8000
+# directly on the Tailscale IP); fall back to userspace mode if /dev/net/tun
+# isn't available (e.g. missing --cap-add=NET_ADMIN / --device=/dev/net/tun).
+if [ -c /dev/net/tun ]; then
+    _TS_TUN_ARGS=""
 else
-    echo "[*] TAILSCALE_AUTHKEY not set; skipping Tailscale"
+    echo "[!] /dev/net/tun not available; falling back to userspace-networking (inbound access from your phone will NOT work)"
+    _TS_TUN_ARGS="--tun=userspace-networking"
+fi
+
+if ! pgrep -x tailscaled > /dev/null 2>&1; then
+    echo "[*] Starting Tailscale daemon..."
+    tailscaled --state=/var/lib/tailscale/tailscaled.state --socket="$_TS_SOCK" $_TS_TUN_ARGS > /tmp/tailscaled.log 2>&1 &
+    # Wait for the daemon socket instead of a fixed sleep
+    for i in $(seq 1 10); do
+        [ -S "$_TS_SOCK" ] && break
+        sleep 1
+    done
+else
+    echo "[*] tailscaled already running; reusing it"
+fi
+
+_TS_READY=0
+if tailscale status > /dev/null 2>&1; then
+    # Already logged in from persisted state — nothing else to do
+    _TS_READY=1
+    echo "[*] Tailscale already authenticated; reusing existing node identity"
+elif [ -n "$TAILSCALE_AUTHKEY" ]; then
+    echo "[*] Authenticating with Tailscale..."
+    tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname=jarvis-dev --accept-dns=false > /tmp/tailscale.log 2>&1
+    for i in $(seq 1 10); do
+        if tailscale status > /dev/null 2>&1; then
+            _TS_READY=1
+            break
+        fi
+        sleep 1
+    done
+else
+    echo "[*] TAILSCALE_AUTHKEY not set and no existing session; skipping Tailscale"
+fi
+
+if [ "$_TS_READY" = "1" ]; then
+    echo "[✓] Tailscale is up"
+    TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo 'unavailable')
+    echo "    Tailscale IP: $TAILSCALE_IP  (open http://$TAILSCALE_IP:8000 or :8443 from your phone)"
+elif [ -n "$TAILSCALE_AUTHKEY" ]; then
+    echo "[!] Tailscale did not come up — check /tmp/tailscale.log and /tmp/tailscaled.log"
+    tail -20 /tmp/tailscaled.log 2>/dev/null
+    tail -20 /tmp/tailscale.log 2>/dev/null
 fi
 
 # -------------------------------------------------------

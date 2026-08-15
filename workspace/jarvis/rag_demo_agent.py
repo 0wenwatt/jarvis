@@ -191,7 +191,7 @@ Always choose the most appropriate RAG mode:
 """
 
 rag_agent: Agent[RAGAgentDeps, str] = Agent(
-    model=os.environ.get("AGENT_MODEL", "anthropic:claude-sonnet-4-6"),
+    model=os.environ.get("AGENT_MODEL", "google:gemini-2.5-flash"),
     system_prompt=_SYSTEM_PROMPT,
     deps_type=RAGAgentDeps,
     result_type=str,

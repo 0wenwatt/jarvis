@@ -587,7 +587,7 @@ MAIN_INSTRUCTIONS = f"""{BASE_PROMPT}
 4. **Code Review**: Delegate to the 'code-reviewer' subagent for code quality review
 5. **Entertainment**: Delegate to the 'joke-generator' subagent for humor
 6. **Quick Reference**: Load the 'quick-reference' skill for command shortcuts
-7. **Dynamic Agents**: Create new specialized agents at runtime with `create_agent(name, description, instructions)`, then delegate tasks to them. Use `list_agents()` to see created agents, `remove_agent(name)` to delete them. Allowed models: anthropic:claude-sonnet-4-6, anthropic:claude-haiku-4-5-20251001, anthropic:claude-haiku-4-5-20251001.
+7. **Dynamic Agents**: Create new specialized agents at runtime with `create_agent(name, description, instructions)`, then delegate tasks to them. Use `list_agents()` to see created agents, `remove_agent(name)` to delete them. Allowed models: google:gemini-2.5-flash, google:gemini-2.5-flash-lite.
 8. **Plan Mode**: For complex tasks, delegate to the 'planner' subagent which will \
 analyze the codebase, ask clarifying questions with options, and create a step-by-step \
 implementation plan. Trigger when the user says 'use plan mode' or for tasks requiring \
@@ -684,15 +684,16 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
     - Human-in-the-loop (execute approval)
     """
     # Dynamic agent factory — lets the agent create new specialized agents at runtime
+    default_agent_model = os.environ.get("AGENT_MODEL", "google:gemini-2.5-flash")
     agent_registry = DynamicAgentRegistry()
     factory_toolset = create_agent_factory_toolset(
         registry=agent_registry,
         allowed_models=[
-            "anthropic:claude-sonnet-4-6",
-            "anthropic:claude-haiku-4-5-20251001",
-            "anthropic:claude-haiku-4-5-20251001",
+            default_agent_model,
+            "google:gemini-2.5-flash",
+            "google:gemini-2.5-flash-lite",
         ],
-        default_model="anthropic:claude-haiku-4-5-20251001",
+        default_model=default_agent_model,
         max_agents=5,
         id="agent-factory",
     )
@@ -713,7 +714,7 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
     )
 
     return create_deep_agent(
-        model="anthropic:claude-sonnet-4-6",
+        model=default_agent_model,
         instructions=MAIN_INSTRUCTIONS,
         backend=None,  # Backend comes from deps at runtime (per-session Docker container)
         # --- Toolsets ---
@@ -722,6 +723,10 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
         include_subagents=True,
         include_skills=True,
         include_execute=True,  # Force include - backend provided via deps at runtime
+        # Gemini (pre-3.0) can't mix native built-in tools with function tools,
+        # so disable the native web search/fetch capabilities.
+        web_search=False,
+        web_fetch=False,
         toolsets=[factory_toolset] + extra_toolsets,
         # --- Subagents (joke-generator + code-reviewer + general-purpose + dynamic) ---
         subagents=SUBAGENT_CONFIGS,
@@ -756,6 +761,32 @@ def create_agent() -> Agent[DeepAgentDeps, str]:
 # Default DEEP.md content to seed into new sessions
 _DEEP_MD_PATH = APP_DIR / "workspace" / "DEEP.md"
 
+# Directories excluded when copying the jarvis app source into a sandbox —
+# session data, VCS metadata, and caches that a fresh sandbox doesn't need.
+_JARVIS_SOURCE_EXCLUDE_DIRS = {"workspaces", "__pycache__", ".git", ".venv", "venv", "node_modules", ".pytest_cache"}
+
+
+def _seed_jarvis_copy(sandbox: Any) -> None:
+    """Copy the jarvis app source into the sandbox at /workspace/jarvis.
+
+    Lets the agent inspect and work on its own codebase from inside its
+    isolated per-session container.
+    """
+    for path in APP_DIR.rglob("*"):
+        if path.is_dir():
+            continue
+        rel = path.relative_to(APP_DIR)
+        if any(part in _JARVIS_SOURCE_EXCLUDE_DIRS for part in rel.parts):
+            continue
+        try:
+            content = path.read_bytes()
+        except OSError as e:
+            logger.warning(f"Skipping {rel} while seeding jarvis copy: {e}")
+            continue
+        result = sandbox.write(f"/workspace/jarvis/{rel.as_posix()}", content)
+        if result.error:
+            logger.warning(f"Failed to seed {rel} into sandbox: {result.error}")
+
 
 async def get_or_create_session(session_id: str) -> UserSession:
     """Get existing session or create a new one with isolated Docker container."""
@@ -772,6 +803,9 @@ async def get_or_create_session(session_id: str) -> UserSession:
     if _DEEP_MD_PATH.exists():
         deep_md_content = _DEEP_MD_PATH.read_text()
         sandbox.write("/workspace/DEEP.md", deep_md_content)
+
+    # Give the sandbox a copy of the jarvis app source
+    _seed_jarvis_copy(sandbox)
 
     # Create per-session checkpoint store
     cp_store = InMemoryCheckpointStore()
