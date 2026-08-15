@@ -1006,6 +1006,18 @@ async def websocket_chat(websocket: WebSocket):  # noqa: C901
                 await handle_approval(websocket, session, approval_response)
                 continue
 
+            # A tool call is still waiting for approval — sending a new prompt
+            # now would leave that call unresolved in message_history and crash
+            # the next agent run. Reject until the pending approval is resolved.
+            if session.pending_approval_state:
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "content": "A tool call is waiting for your approval — respond to it before sending a new message.",
+                    }
+                )
+                continue
+
             if not user_message and not attachments:
                 await websocket.send_json({"type": "error", "content": "Empty message"})
                 continue
@@ -1303,7 +1315,8 @@ async def handle_approval(
             deferred_results=DeferredToolResults(approvals=approvals),
         )
     except Exception as e:
-        await websocket.send_json({"type": "error", "content": str(e)})
+        logger.exception("Error continuing agent run after approval")
+        await websocket.send_json({"type": "error", "content": str(e) or repr(e)})
 
 
 async def _stream_model_request(
@@ -1427,7 +1440,7 @@ async def _stream_tool_calls(
             elif isinstance(event, FunctionToolResultEvent):
                 tool_call_id = event.tool_call_id
                 tool_name = tool_names_by_id.get(tool_call_id, "unknown")
-                result_content = event.result.content
+                result_content = event.part.content
                 logger.info(f"  TOOL RESULT: {tool_name} -> {str(result_content)[:100]}...")
 
                 await websocket.send_json(
