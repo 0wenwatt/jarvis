@@ -1,0 +1,6 @@
+[submodule "workspace/jarvis/pydantic-deepagents"]
+	path = workspace/jarvis/pydantic-deepagents
+	url = https://github.com/vstorm-co/pydantic-deepagents.git
+[submodule "workspace/jarvis/production-stack-skills"]
+	path = workspace/jarvis/production-stack-skills
+	url = https://github.com/vstorm-co/production-stack-skills.git

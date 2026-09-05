@@ -8,12 +8,12 @@ echo "=========================================="
 # Load environment variables from .env if it exists
 if [ -f /workspace/.env ]; then
     echo "[*] Loading environment from /workspace/.env"
-    set -a; source <(sed 's/\r$//' /workspace/.env); set +a
+    set -a; source /workspace/.env; set +a
 fi
 
 if [ -f /workspace/jarvis/.env ]; then
     echo "[*] Loading environment from /workspace/jarvis/.env"
-    set -a; source <(sed 's/\r$//' /workspace/jarvis/.env); set +a
+    set -a; source /workspace/jarvis/.env; set +a
 fi
 
 # -------------------------------------------------------
@@ -174,20 +174,8 @@ if [ -f /workspace/jarvis/app.py ]; then
         echo "[!] FastAPI failed to start — check /tmp/fastapi.log:"
         tail -20 /tmp/fastapi.log
     fi
-elif [ -f /workspace/jarvis/pydantic-deepagents/examples/full_app/app.py ]; then
-    echo "[*] Starting included pydantic-deep full demo on http://0.0.0.0:8000..."
-    cd /workspace/jarvis/pydantic-deepagents/examples/full_app
-    uvicorn app:app --host 0.0.0.0 --port 8000 --log-level info > /tmp/fastapi.log 2>&1 &
-    FASTAPI_PID=$!
-    sleep 4
-    if kill -0 "$FASTAPI_PID" 2>/dev/null; then
-        echo "[✓] pydantic-deep FastAPI started (PID: $FASTAPI_PID)"
-    else
-        echo "[!] pydantic-deep FastAPI failed to start — check /tmp/fastapi.log:"
-        tail -20 /tmp/fastapi.log
-    fi
 else
-    echo "[!] WARNING: no supported FastAPI demo found — FastAPI not started"
+    echo "[!] WARNING: /workspace/jarvis/app.py not found — FastAPI not started"
 fi
 
 # -------------------------------------------------------

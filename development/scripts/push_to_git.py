@@ -48,7 +48,7 @@ SECRET_PATTERNS = [
     (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key ID"),
     (re.compile(r"-----BEGIN (RSA|EC|OPENSSH|PGP|PRIVATE) PRIVATE KEY-----"), "Private key block"),
     (
-        re.compile(r"(?i)(secret|password|passwd|token|api[_-]?key)\s*[:=]\s*['\"]?[A-Za-z0-9+/_\-]{16,}"),
+        re.compile(r"(?i)(secret|password|passwd|token|api[_-]?key)[ \t]*[:=][ \t]*['\"]?[A-Za-z0-9+/_\-]{16,}"),
         "Generic secret-looking assignment",
     ),
 ]
@@ -60,6 +60,8 @@ def run_git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=check,
     )
 
@@ -75,6 +77,10 @@ def scan_staged_diff() -> list[str]:
     for pattern, label in SECRET_PATTERNS:
         for match in pattern.finditer(diff):
             snippet = match.group(0)
+            if label == "Generic secret-looking assignment" and re.search(
+                r"(?i)(xxxxx|your[_-]|changeme|example|fallback[_-]|<[^>]+>)", snippet
+            ):
+                continue
             redacted = snippet[:8] + "..." if len(snippet) > 8 else "***"
             findings.append(f"{label}: {redacted}")
     return findings

@@ -7,8 +7,8 @@ services:
     env_file:
       - .env
     volumes:
-      # Application source is available when the container starts.
-      - ./workspace/jarvis:/workspace/jarvis
+      # Workspace (persistent Docker volume instead of a direct host bind)
+      - jarvis-workspace-files:/workspace/jarvis
       - ./.code-server-config:/root/.config/code-server
 
       # Docker-in-Docker
@@ -52,9 +52,6 @@ services:
           memory: 512m
           cpus: "0.5"
 
-    mem_limit: 2g
-    cpus: 2.0
-
     restart: unless-stopped
     depends_on:
       postgres-age:
@@ -74,7 +71,7 @@ services:
       context: ./postgres-age
       dockerfile: Dockerfile
       args:
-        PG_MAJOR: "18"
+        PG_MAJOR: "16"
     container_name: postgres-age
     networks:
       - jarvis-net
@@ -84,8 +81,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-jarvis}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    expose:
-      - "5432"
+    ports:
+      - "5432:5432"
     volumes:
       # PG18+ stores data under /var/lib/postgresql/<major>/data — mount the parent
       - postgres-age-data:/var/lib/postgresql
@@ -184,6 +181,7 @@ networks:
 
 volumes:
   postgres-age-data:
+  jarvis-workspace-files:
   jarvis-workspaces:
   jarvis-skills:
   tailscale-state:

@@ -1,0 +1,34 @@
+# Secrets and local env files
+.env
+.env.*
+workspace/.env
+workspace/.env.*
+
+# Keep distributable templates
+!.env.example
+!workspace/.env.example
+!*.env.template
+
+# Local runtime/config artifacts
+.code-server-config/
+workspace/.code-server-config/
+workspace/jarvis/workspaces/
+
+# Authsome source clone (local build context, not a submodule)
+authsome/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
